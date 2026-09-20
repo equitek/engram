@@ -66,7 +66,7 @@ pub fn mock_embedding(text: &str) -> Vec<f32> {
     let mut block = *seed;
     for _ in 0..(DIMS_NOMIC / 8) {
         block = *blake3::hash(&block).as_bytes();
-        for chunk in block.chunks_exact(4) {
+        for chunk in block.as_chunks::<4>().0 {
             let bits = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
             // Map to [-1, 1] range
             out.push((bits as f32 / u32::MAX as f32) * 2.0 - 1.0);
