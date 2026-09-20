@@ -12,6 +12,10 @@ use clap::{Parser, Subcommand};
                   No setup required. The index is created automatically on first use."
 )]
 pub struct Cli {
+    /// Path to the index database (overrides ~/.engram/index.db and ENGRAM_DB_PATH)
+    #[arg(long, global = true)]
+    pub index: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -45,6 +49,10 @@ pub enum Commands {
         /// Only show file paths (no snippets)
         #[arg(short = 'p', long)]
         show_path: bool,
+
+        /// Output results as JSON (machine-readable)
+        #[arg(long)]
+        json: bool,
     },
 
     /// Remove files from the index

@@ -104,9 +104,16 @@ engram search "$USER_QUESTION" --limit 5
 
 # Agent indexes a new document after capturing knowledge
 engram add ~/notes/new-runbook.md
+
+# Machine-readable JSON output for programmatic integration
+engram search "$USER_QUESTION" --json --limit 5
+
+# Use a separate index for a specific project
+engram --index /path/to/project-index.db add ~/project/docs
+engram --index /path/to/project-index.db search "deployment"
 ```
 
-The output is plain text — easy to parse, pipe, or inject directly into a prompt. No SDK required.
+The output is plain text by default — easy to parse, pipe, or inject directly into a prompt. Use `--json` for machine-readable output. No SDK required.
 
 ## Commands
 
@@ -118,12 +125,40 @@ The output is plain text — easy to parse, pipe, or inject directly into a prom
 | `engram rebuild` | Rebuild index from scratch |
 | `engram status` | Show index stats |
 
+**Global options:**
+
+| Flag | Description |
+|---|---|
+| `--index <path>` | Use a custom index database path (overrides `~/.engram/index.db` and `ENGRAM_DB_PATH`) |
+
 **Options for `add`:**
 
 | Flag | Description |
 |---|---|
 | `--no-progress` | Plain text output instead of progress bar (useful in scripts/CI) |
 | `--recursive` / `-r` | Recursively index directories (default: on) |
+
+**Options for `search`:**
+
+| Flag | Description |
+|---|---|
+| `-l`, `--limit <n>` | Number of results to return (default: 10) |
+| `-p`, `--show-path` | Only show file paths (no snippets) |
+| `--json` | Output results as a JSON array (machine-readable) |
+
+### JSON output format
+
+When `--json` is passed to `search`, output is a JSON array of objects:
+
+```json
+[
+  {
+    "path": "recipes/tuscan-white-bean-soup.md",
+    "snippet": "# tuscan-white-bean-soup.md  Slow-simmer cannellini beans…",
+    "distance": 0.969
+  }
+]
+```
 
 ## Embedding providers
 

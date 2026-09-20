@@ -1,6 +1,7 @@
 /// Core indexing logic: file scanning, chunking, embedding, and search.
 use anyhow::{bail, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -18,8 +19,13 @@ const CHUNK_OVERLAP: usize = 200;
 // Public command handlers
 // ---------------------------------------------------------------------------
 
-pub fn add(paths: &[String], recursive: bool, no_progress: bool) -> Result<()> {
-    let db_path = db_path()?;
+pub fn add(
+    paths: &[String],
+    recursive: bool,
+    no_progress: bool,
+    db_override: Option<&Path>,
+) -> Result<()> {
+    let db_path = resolve_db_path(db_override)?;
 
     // Auto-initialize on first use
     let is_new = !db_path.exists();
@@ -143,7 +149,7 @@ pub fn add(paths: &[String], recursive: bool, no_progress: bool) -> Result<()> {
             };
             if let Err(e) = db.insert_chunk(doc_id, &embedding) {
                 if no_progress {
-                    println!("insert error: {e:#}");
+                    println!("insert error: {e}");
                 }
                 chunk_ok = false;
                 break;
@@ -176,13 +182,41 @@ pub fn add(paths: &[String], recursive: bool, no_progress: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn search(query: &str, limit: usize, show_path: bool) -> Result<()> {
-    let db_path = require_db()?;
+/// JSON-serializable search result for `--json` output.
+#[derive(Serialize)]
+pub struct JsonResult {
+    pub path: String,
+    pub snippet: String,
+    pub distance: f32,
+}
+
+pub fn search(
+    query: &str,
+    limit: usize,
+    show_path: bool,
+    json: bool,
+    db_override: Option<&Path>,
+) -> Result<()> {
+    let db_path = require_db(db_override)?;
     let db = Db::open(&db_path)?;
     let provider = load_provider(&db)?;
 
     let embedding = embed::embed(query, &provider)?;
     let results = db.search(&embedding, limit)?;
+
+    if json {
+        let json_results: Vec<JsonResult> = results
+            .iter()
+            .map(|r| JsonResult {
+                path: r.path.clone(),
+                snippet: r.snippet.clone(),
+                distance: r.distance,
+            })
+            .collect();
+        let json_output = serde_json::to_string_pretty(&json_results)?;
+        println!("{json_output}");
+        return Ok(());
+    }
 
     if results.is_empty() {
         println!("No results found.");
@@ -198,8 +232,8 @@ pub fn search(query: &str, limit: usize, show_path: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn remove(paths: &[String]) -> Result<()> {
-    let db_path = require_db()?;
+pub fn remove(paths: &[String], db_override: Option<&Path>) -> Result<()> {
+    let db_path = require_db(db_override)?;
     let db = Db::open(&db_path)?;
 
     for path in paths {
@@ -212,8 +246,8 @@ pub fn remove(paths: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub fn rebuild() -> Result<()> {
-    let db_path = require_db()?;
+pub fn rebuild(db_override: Option<&Path>) -> Result<()> {
+    let db_path = require_db(db_override)?;
     let db = Db::open(&db_path)?;
     let paths = db.all_paths()?;
     drop(db);
@@ -226,11 +260,11 @@ pub fn rebuild() -> Result<()> {
     drop(db);
 
     let path_strings: Vec<String> = paths;
-    add(&path_strings, false, false)
+    add(&path_strings, false, false, db_override)
 }
 
-pub fn status() -> Result<()> {
-    let db_path = require_db()?;
+pub fn status(db_override: Option<&Path>) -> Result<()> {
+    let db_path = require_db(db_override)?;
     let db = Db::open(&db_path)?;
 
     let count = db.document_count()?;
@@ -250,7 +284,8 @@ pub fn status() -> Result<()> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn db_path() -> Result<PathBuf> {
+/// Read the DB path from the `ENGRAM_DB_PATH` env var, if set.
+pub fn db_path_env() -> Result<PathBuf> {
     if let Ok(p) = std::env::var("ENGRAM_DB_PATH") {
         return Ok(PathBuf::from(p));
     }
@@ -258,8 +293,18 @@ fn db_path() -> Result<PathBuf> {
     Ok(home.join(".engram").join("index.db"))
 }
 
-fn require_db() -> Result<PathBuf> {
-    let path = db_path()?;
+/// Resolve the DB path: `--index` override takes precedence, then `ENGRAM_DB_PATH`,
+/// then the default `~/.engram/index.db`.
+fn resolve_db_path(db_override: Option<&Path>) -> Result<PathBuf> {
+    if let Some(p) = db_override {
+        return Ok(p.to_path_buf());
+    }
+    db_path_env()
+}
+
+/// Like `resolve_db_path`, but also verifies the index exists (bails if not).
+fn require_db(db_override: Option<&Path>) -> Result<PathBuf> {
+    let path = resolve_db_path(db_override)?;
     if !path.exists() {
         bail!("engram not initialized. Run `engram init` first.");
     }
