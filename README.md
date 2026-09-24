@@ -75,10 +75,10 @@ Lower distance = stronger match. Results are ranked by semantic similarity acros
 
 ```bash
 # From source (requires Rust 1.75+)
-cargo install --git https://github.com/pureclaw/engram
+cargo install --git https://github.com/equitek/engram
 
 # Pre-built binaries
-# https://github.com/pureclaw/engram/releases
+# https://github.com/equitek/engram/releases
 ```
 
 ## Quick start

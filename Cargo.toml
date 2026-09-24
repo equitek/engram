@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2021"
 description = "Fast, portable knowledge base CLI with semantic search"
 license = "MIT"
-repository = "https://github.com/pureclaw/engram"
+repository = "https://github.com/equitek/engram"
 keywords = ["knowledge-base", "search", "embeddings", "sqlite", "cli"]
 categories = ["command-line-utilities"]
 

@@ -5,7 +5,7 @@ Thanks for your interest. Contributions of all kinds are welcome — bug reports
 ## Getting started
 
 ```bash
-git clone https://github.com/pureclaw/engram
+git clone https://github.com/equitek/engram
 cd engram
 cargo build
 cargo test
