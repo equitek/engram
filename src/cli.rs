@@ -35,6 +35,10 @@ pub enum Commands {
         /// Disable progress bar (plain text output, useful for scripts/logs)
         #[arg(long)]
         no_progress: bool,
+
+        /// Extra file extensions to index this run (e.g. --ext csv --ext yaml)
+        #[arg(long = "ext", value_name = "EXT")]
+        ext: Vec<String>,
     },
 
     /// Search the knowledge base by meaning

@@ -16,7 +16,18 @@ fn main() -> Result<()> {
             paths,
             recursive,
             no_progress,
-        } => index::add(&paths, recursive, no_progress, db_path.as_deref())?,
+            ext,
+        } => {
+            let mut extra_exts = engram::config::Config::load()?.extra_extensions();
+            extra_exts.extend(ext);
+            index::add(
+                &paths,
+                recursive,
+                no_progress,
+                db_path.as_deref(),
+                &extra_exts,
+            )?
+        }
         Commands::Search {
             query,
             limit,

@@ -8,7 +8,7 @@ use walkdir::WalkDir;
 use crate::db::Db;
 use crate::embed::{self, Provider};
 
-const SUPPORTED_EXTENSIONS: &[&str] = &["md", "txt", "rst", "org", "adoc"];
+const SUPPORTED_EXTENSIONS: &[&str] = &["md", "txt", "rst", "org", "adoc", "json", "jsonl", "log"];
 const SNIPPET_LEN: usize = 300;
 /// Maximum characters per chunk (~1500 tokens, well within nomic-embed-text's 8192 limit)
 const CHUNK_SIZE: usize = 6000;
@@ -24,6 +24,7 @@ pub fn add(
     recursive: bool,
     no_progress: bool,
     db_override: Option<&Path>,
+    extra_exts: &[String],
 ) -> Result<()> {
     let db_path = resolve_db_path(db_override)?;
 
@@ -51,7 +52,7 @@ pub fn add(
     // problems (e.g. missing Ollama model) early with a clear error.
     embed::embed("preflight check", &provider).context("Embedding provider is not available")?;
 
-    let files = collect_files(paths, recursive);
+    let files = collect_files(paths, recursive, extra_exts);
     if files.is_empty() {
         println!("No supported files found.");
         return Ok(());
@@ -260,7 +261,9 @@ pub fn rebuild(db_override: Option<&Path>) -> Result<()> {
     drop(db);
 
     let path_strings: Vec<String> = paths;
-    add(&path_strings, false, false, db_override)
+    let cfg = crate::config::Config::load()?;
+    let extra_exts = cfg.extra_extensions();
+    add(&path_strings, false, false, db_override, &extra_exts)
 }
 
 pub fn status(db_override: Option<&Path>) -> Result<()> {
@@ -338,18 +341,19 @@ fn load_provider(db: &Db) -> Result<Provider> {
     })
 }
 
-fn collect_files(paths: &[String], recursive: bool) -> Vec<PathBuf> {
+fn collect_files(paths: &[String], recursive: bool, extra_exts: &[String]) -> Vec<PathBuf> {
+    let ext_set = effective_extensions(extra_exts);
     let mut files = Vec::new();
     for path_str in paths {
         let path = Path::new(path_str);
         if path.is_file() {
-            if is_supported(path) {
+            if is_supported(path, &ext_set) {
                 files.push(path.to_path_buf());
             }
         } else if path.is_dir() {
             let walker = WalkDir::new(path).max_depth(if recursive { usize::MAX } else { 1 });
             for entry in walker.into_iter().filter_map(|e| e.ok()) {
-                if entry.file_type().is_file() && is_supported(entry.path()) {
+                if entry.file_type().is_file() && is_supported(entry.path(), &ext_set) {
                     files.push(entry.into_path());
                 }
             }
@@ -358,10 +362,24 @@ fn collect_files(paths: &[String], recursive: bool) -> Vec<PathBuf> {
     files
 }
 
-fn is_supported(path: &Path) -> bool {
+/// Build the set of extensions to index for a run: built-in defaults plus any
+/// extras from config file or `--ext` flags. All extensions are lowercased and
+/// stripped of leading dots.
+fn effective_extensions(extra: &[String]) -> Vec<String> {
+    let mut set: Vec<String> = SUPPORTED_EXTENSIONS.iter().map(|s| s.to_string()).collect();
+    for e in extra {
+        let e = e.trim_start_matches('.').to_lowercase();
+        if !set.contains(&e) {
+            set.push(e);
+        }
+    }
+    set
+}
+
+fn is_supported(path: &Path, ext_set: &[String]) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| SUPPORTED_EXTENSIONS.contains(&e))
+        .map(|e| ext_set.contains(&e.to_lowercase()))
         .unwrap_or(false)
 }
 
