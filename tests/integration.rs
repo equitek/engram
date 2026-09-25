@@ -103,7 +103,7 @@ fn add_directory_recursive() {
     .unwrap();
     fs::write(sub.join("nested.txt"), "Nested document about integration.").unwrap();
     // Non-supported extension should be skipped
-    fs::write(data.path().join("skip.json"), r#"{"not": "indexed"}"#).unwrap();
+    fs::write(data.path().join("skip.bin"), b"\x00\x01\x02 not text").unwrap();
 
     let out = run(
         &db,
@@ -550,5 +550,125 @@ fn search_json_distance_is_float() {
         parsed[0]["distance"].as_f64().is_some(),
         "expected distance to be a number, got: {}",
         parsed[0]
+    );
+}
+
+#[test]
+fn add_json_file_is_default_supported() {
+    let db = TempDir::new().unwrap();
+    let data = TempDir::new().unwrap();
+    let file = data.path().join("data.json");
+    fs::write(&file, r#"{"topic": "Rust programming language"}"#).unwrap();
+
+    let out = run(&db, &["add", "--no-progress", file.to_str().unwrap()]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("Indexed 1 files"),
+        "json should be indexed by default: {text}"
+    );
+}
+
+#[test]
+fn add_log_file_is_default_supported() {
+    let db = TempDir::new().unwrap();
+    let data = TempDir::new().unwrap();
+    let file = data.path().join("app.log");
+    fs::write(&file, "2024-01-01 INFO: Rust service started successfully").unwrap();
+
+    let out = run(&db, &["add", "--no-progress", file.to_str().unwrap()]);
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("Indexed 1 files"),
+        "log should be indexed by default: {text}"
+    );
+}
+
+#[test]
+fn add_ext_flag_indexes_custom_extension() {
+    let db = TempDir::new().unwrap();
+    let data = TempDir::new().unwrap();
+
+    // .csv is not a built-in extension
+    let csv_file = data.path().join("data.csv");
+    fs::write(&csv_file, "name,description\nRust,A programming language").unwrap();
+    let md_file = data.path().join("notes.md");
+    fs::write(&md_file, "Notes about Rust programming.").unwrap();
+
+    let out = run(
+        &db,
+        &[
+            "add",
+            "--no-progress",
+            "-r",
+            "--ext",
+            "csv",
+            data.path().to_str().unwrap(),
+        ],
+    );
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("Indexed 2 files"),
+        "should index both .md and .csv: {text}"
+    );
+}
+
+#[test]
+fn add_ext_flag_with_dot_prefix() {
+    let db = TempDir::new().unwrap();
+    let data = TempDir::new().unwrap();
+    let file = data.path().join("data.yaml");
+    fs::write(&file, "topic: Rust programming").unwrap();
+
+    let out = run(
+        &db,
+        &[
+            "add",
+            "--no-progress",
+            "--ext",
+            ".yaml",
+            file.to_str().unwrap(),
+        ],
+    );
+    assert!(out.status.success(), "stderr: {}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("Indexed 1 files"),
+        ".yaml with dot prefix should work: {text}"
+    );
+}
+
+#[test]
+fn ext_flag_does_not_persist_to_next_run() {
+    let db = TempDir::new().unwrap();
+    let data = TempDir::new().unwrap();
+    let yaml_file = data.path().join("a.yaml");
+    fs::write(&yaml_file, "topic: Rust programming").unwrap();
+
+    // First run with --ext yaml indexes it
+    let out1 = run(
+        &db,
+        &[
+            "add",
+            "--no-progress",
+            "--ext",
+            "yaml",
+            yaml_file.to_str().unwrap(),
+        ],
+    );
+    assert!(out1.status.success());
+    assert!(stdout(&out1).contains("Indexed 1 files"));
+
+    // Second run without --ext should not index yaml
+    let yaml2 = data.path().join("b.yaml");
+    fs::write(&yaml2, "topic: Go programming").unwrap();
+    let out2 = run(&db, &["add", "--no-progress", yaml2.to_str().unwrap()]);
+    assert!(out2.status.success());
+    let text = stdout(&out2);
+    assert!(
+        text.contains("No supported files found"),
+        "yaml should not be supported without --ext: {text}"
     );
 }
